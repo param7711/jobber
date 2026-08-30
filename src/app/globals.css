@@ -1,0 +1,140 @@
+@import "tailwindcss";
+
+/* Explicit dark class wins over the OS preference; see :root blocks below. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  /* neutrals — cool, faint blue-violet bias */
+  --c-ground: #f2f3f7;
+  --c-surface: #ffffff;
+  --c-surface-2: #eaecf2;
+  --c-ink: #151821;
+  --c-ink-2: #3a4152;
+  --c-muted: #5a6273;
+  --c-line: #d6d9e3;
+  --c-line-soft: #e4e7ef;
+
+  /* market sides — employer is ultramarine, candidate is ochre */
+  --c-hire: #2a4a9e;
+  --c-hire-soft: #e5eaf7;
+  --c-seek: #9c5c0d;
+  --c-seek-soft: #f6ebdc;
+
+  /* semantics — distinct from the two side accents */
+  --c-pass: #a32c2c;
+  --c-pass-soft: #f7e6e6;
+  --c-keep: #1f6b4a;
+  --c-keep-soft: #e0f0e8;
+  --c-warn: #8a6212;
+  --c-warn-soft: #f7efdb;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not(.light) {
+    --c-ground: #101219;
+    --c-surface: #181b24;
+    --c-surface-2: #20242f;
+    --c-ink: #e7e9ef;
+    --c-ink-2: #c2c7d4;
+    --c-muted: #9096a6;
+    --c-line: #2c313e;
+    --c-line-soft: #232833;
+
+    --c-hire: #8aa6eb;
+    --c-hire-soft: #1b2440;
+    --c-seek: #dfa24e;
+    --c-seek-soft: #332613;
+
+    --c-pass: #e08585;
+    --c-pass-soft: #3a2020;
+    --c-keep: #6cc79b;
+    --c-keep-soft: #16301f;
+    --c-warn: #d9ab53;
+    --c-warn-soft: #322817;
+  }
+}
+
+.dark {
+  --c-ground: #101219;
+  --c-surface: #181b24;
+  --c-surface-2: #20242f;
+  --c-ink: #e7e9ef;
+  --c-ink-2: #c2c7d4;
+  --c-muted: #9096a6;
+  --c-line: #2c313e;
+  --c-line-soft: #232833;
+
+  --c-hire: #8aa6eb;
+  --c-hire-soft: #1b2440;
+  --c-seek: #dfa24e;
+  --c-seek-soft: #332613;
+
+  --c-pass: #e08585;
+  --c-pass-soft: #3a2020;
+  --c-keep: #6cc79b;
+  --c-keep-soft: #16301f;
+  --c-warn: #d9ab53;
+  --c-warn-soft: #322817;
+}
+
+@theme inline {
+  --color-ground: var(--c-ground);
+  --color-surface: var(--c-surface);
+  --color-surface-2: var(--c-surface-2);
+  --color-ink: var(--c-ink);
+  --color-ink-2: var(--c-ink-2);
+  --color-muted: var(--c-muted);
+  --color-line: var(--c-line);
+  --color-line-soft: var(--c-line-soft);
+
+  --color-hire: var(--c-hire);
+  --color-hire-soft: var(--c-hire-soft);
+  --color-seek: var(--c-seek);
+  --color-seek-soft: var(--c-seek-soft);
+
+  --color-pass: var(--c-pass);
+  --color-pass-soft: var(--c-pass-soft);
+  --color-keep: var(--c-keep);
+  --color-keep-soft: var(--c-keep-soft);
+  --color-warn: var(--c-warn);
+  --color-warn-soft: var(--c-warn-soft);
+
+  --font-sans: var(--font-archivo), "Helvetica Neue", Arial, sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, monospace;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background: var(--c-ground);
+  color: var(--c-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* The swipe deck owns the pointer; never let the browser pan the page under it. */
+.deck-surface {
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Uppercase micro-labels used for data keys and side tags. */
+.label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
