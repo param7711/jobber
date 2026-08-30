@@ -38,6 +38,18 @@ export default async function Home() {
         <p className="mt-2 text-[13.5px] text-muted">
           Sourcing always happens inside a requisition. Pick one:
         </p>
+        <Link
+          href="/employer/search"
+          className="mt-3 flex items-center justify-between gap-4 rounded-lg border border-line bg-surface px-5 py-4 transition-colors hover:border-hire"
+        >
+          <div>
+            <p className="text-[15px] font-semibold">Search candidates</p>
+            <p className="mt-0.5 text-[13.5px] text-muted">
+              For when you already know what you need.
+            </p>
+          </div>
+          <Arrow />
+        </Link>
         <ul className="mt-3 flex flex-col gap-2">
           {openJobs.map(({ job, company }) => {
             return (

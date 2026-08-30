@@ -74,6 +74,23 @@ export function CandidateCard({
         )}
 
         <section className="mt-5">
+          <p className="label text-muted">Will work in</p>
+          <ul className="mt-2 flex flex-wrap gap-1.5">
+            {(candidate.preferredLocations.length > 0
+              ? candidate.preferredLocations
+              : [candidate.city]
+            ).map((loc) => (
+              <li
+                key={loc}
+                className="rounded-sm border border-hire/25 bg-hire-soft px-2 py-1 font-mono text-[11px] tracking-tight text-hire"
+              >
+                {loc}
+              </li>
+            ))}
+          </ul>
+        </section>
+
+        <section className="mt-5">
           <p className="label text-muted">Skills</p>
           <ul className="mt-2 flex flex-wrap gap-1.5">
             {candidate.skills.slice(0, 7).map((skill) => (

@@ -27,8 +27,15 @@ import type {
  * cover server-side rendering. Removing either one opens the hole.
  */
 
-/** Availability past 21 days drops a candidate out of every deck. */
-const NOT_EXPIRED = sql`${candidateProfiles.availabilityConfirmedAt} > now() - interval '21 days'`;
+/**
+ * Availability past 21 days drops a candidate out of every deck.
+ *
+ * The interval is 22 days, not 21, and that is deliberate: availabilityState()
+ * floors to whole days and calls day 21 "stale but visible". Comparing against
+ * '21 days' here would hide someone whose own card still read "Stale · 21d".
+ * The two boundaries have to agree or the UI lies about who can see you.
+ */
+const NOT_EXPIRED = sql`${candidateProfiles.availabilityConfirmedAt} > now() - interval '22 days'`;
 
 type ProfileRow = typeof candidateProfiles.$inferSelect;
 
@@ -325,6 +332,104 @@ export async function passFeedbackForCandidate(
         : null,
     breakdown,
   };
+}
+
+export interface SearchFilters {
+  /** Free text across headline, skills and company names. */
+  q?: string;
+  /** Candidate must be willing to work in at least one of these. */
+  locations?: string[];
+  maxNoticeDays?: number;
+  maxCtcExpected?: number;
+}
+
+/**
+ * Recruiter keyword search — the escape hatch from the deck.
+ *
+ * A deck is right when a recruiter wants to be shown people; search is right
+ * when they already know they need "Go and Kafka". Not having both is a reason
+ * recruiters churn, so this complements the deck rather than replacing it.
+ *
+ * Availability decay and stealth blocks apply here exactly as they do in the
+ * deck. A search result that leaked a blocked candidate would be the same
+ * catastrophe by a different route.
+ */
+export async function searchCandidates(
+  companyId: string,
+  filters: SearchFilters,
+): Promise<Candidate[]> {
+  const [company] = await db
+    .select()
+    .from(companies)
+    .where(eq(companies.id, companyId))
+    .limit(1);
+  if (!company) return [];
+
+  const conditions = [
+    eq(candidateProfiles.openToWork, true),
+    NOT_EXPIRED,
+    sql`NOT EXISTS (
+      SELECT 1 FROM ${stealthBlocks} sb
+      WHERE sb.profile_id = ${candidateProfiles.userId}
+        AND lower(sb.blocked_domain) = lower(${company.domain})
+    )`,
+  ];
+
+  const q = filters.q?.trim();
+  if (q) {
+    // Every term must appear somewhere — AND, not OR. A recruiter typing
+    // "Go Kafka" wants both, and an OR search buries the good matches.
+    for (const term of q.split(/\s+/).filter(Boolean)) {
+      const like = `%${term}%`;
+      conditions.push(sql`(
+        ${candidateProfiles.headline} ILIKE ${like}
+        OR EXISTS (
+          SELECT 1 FROM unnest(${candidateProfiles.skills}) AS s
+          WHERE s ILIKE ${like}
+        )
+        OR EXISTS (
+          SELECT 1 FROM ${experiences} e
+          WHERE e.profile_id = ${candidateProfiles.userId}
+            AND (e.company ILIKE ${like} OR e.title ILIKE ${like})
+        )
+      )`);
+    }
+  }
+
+  if (filters.locations?.length) {
+    // One EXISTS per requested location, OR'd together. Passing an array to
+    // ANY() looks tidier but drizzle sends it untyped and Postgres reads it
+    // as an array literal — this avoids the problem rather than casting past it.
+    const locationMatches = filters.locations.map(
+      (l) => sql`EXISTS (
+        SELECT 1 FROM unnest(${candidateProfiles.preferredLocations}) AS loc
+        WHERE loc ILIKE ${`%${l}%`}
+      )`,
+    );
+    const combined = or(...locationMatches);
+    if (combined) conditions.push(combined);
+  }
+
+  if (filters.maxNoticeDays !== undefined) {
+    conditions.push(
+      sql`${candidateProfiles.noticeDays} <= ${filters.maxNoticeDays}`,
+    );
+  }
+
+  if (filters.maxCtcExpected !== undefined) {
+    conditions.push(
+      sql`${candidateProfiles.ctcExpected} <= ${filters.maxCtcExpected}`,
+    );
+  }
+
+  const rows = await db
+    .select()
+    .from(candidateProfiles)
+    .where(and(...conditions))
+    .orderBy(desc(candidateProfiles.availabilityConfirmedAt))
+    .limit(50);
+
+  return hydrateCandidates(rows);
 }
 
 /** Candidates whose availability has gone stale and need a nudge. */

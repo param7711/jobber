@@ -36,6 +36,13 @@
       "when": 1788116109404,
       "tag": "0004_dear_microchip",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1788116110404,
+      "tag": "0005_align_availability_boundary",
+      "breakpoints": true
     }
   ]
 }

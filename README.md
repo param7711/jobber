@@ -31,8 +31,10 @@ both sides of the marketplace.
 | Right-swipe budget | Done |
 | Availability freshness + decay | Done, enforced in queries |
 | Profile completeness meter | Done — weighted, one nudge at a time |
-| Preferred locations + employment type | Schema + data; not yet in matching |
-| Screening questions on a requisition | Schema + data; not yet on the card |
+| Preferred locations | Done — shown on cards, filterable in search |
+| Employment type | Schema + data; not yet surfaced |
+| Screening questions | Done — shown on the role card |
+| Recruiter keyword search | Done — `/employer/search` |
 | Database | Live on Supabase; all pages read from Postgres |
 | Candidate swipe persistence | Done — `POST /api/swipes`, idempotent |
 | Employer swipe persistence | Done — reason-coded passes are written |
@@ -87,6 +89,7 @@ src/
     page.tsx                              dev switcher
     candidate/deck/page.tsx               role deck
     employer/sourcing/[jobId]/page.tsx    candidate deck
+    employer/search/page.tsx              recruiter keyword search
     api/swipes/route.ts                   swipe log endpoint
     globals.css                           design tokens
   components/
@@ -120,6 +123,7 @@ deck rows.
 | `0002_harden_helper_and_grants` | Moves the SECURITY DEFINER helper out of the REST-exposed schema; revokes grants on the locked tables |
 | `0003_move_vector_to_extensions_schema` | Takes pgvector out of `public` |
 | `0004_dear_microchip` | Preferred locations, employment type, screening questions |
+| `0005_align_availability_boundary` | Fixes an off-by-one against the app's own boundary |
 
 Supabase holds the applied ledger; Drizzle's `__drizzle_migrations` table has
 been reconciled to match, so `npm run db:migrate` correctly sees all four as
@@ -167,6 +171,16 @@ Two rules were tested against the live database rather than assumed:
   the feedback panel entirely; restoring it to five brings it back.
 - **No company leakage.** The rendered feedback panel contains none of the
   company names, checked against the markup rather than assumed.
+
+## Demo data drifts
+
+Seeded availability dates are absolute, so after a couple of weeks everyone
+reads as stale and the freshness states stop illustrating anything. Re-stamp
+them:
+
+```bash
+node --env-file=.env.local scripts/refresh-availability.mjs
+```
 
 ## Next
 

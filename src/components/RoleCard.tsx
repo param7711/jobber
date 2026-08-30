@@ -103,6 +103,32 @@ export function RoleCard({ job, company }: { job: Job; company: Company }) {
           </section>
         )}
 
+        {job.screeningQuestions.length > 0 && (
+          <section className="mt-5">
+            <p className="label text-muted">You will be asked</p>
+            <ul className="mt-2 flex flex-col gap-2">
+              {job.screeningQuestions.map((q) => (
+                <li key={q.id} className="flex gap-2.5">
+                  <span
+                    aria-hidden
+                    className={
+                      q.knockout
+                        ? "mt-[6px] h-1.5 w-1.5 shrink-0 rounded-full bg-seek"
+                        : "mt-[6px] h-1.5 w-1.5 shrink-0 rounded-full bg-line"
+                    }
+                  />
+                  <span className="text-[13.5px] leading-[1.45] text-ink-2">
+                    {q.prompt}
+                    {q.knockout && (
+                      <span className="label ml-1.5 text-seek">required</span>
+                    )}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
         <section className="mt-5">
           <p className="label text-muted">About</p>
           <p className="mt-1.5 text-[13.5px] leading-[1.55] text-ink-2">
