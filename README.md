@@ -43,6 +43,11 @@ both sides of the marketplace.
 | Application tracker | Done — `/candidate/applications` |
 | Saved jobs | Done — `saved_jobs`, owner-only RLS |
 | Site navigation | Done — persistent header |
+| Mutual match | Done — settled on the second right swipe, expires in 14 days |
+| Messaging | Done — inside a match only, expiry enforced by the API |
+| Employer pipeline | Done — `/employer/pipeline/[jobId]`, inbound applicants |
+| Fit score on listings | Done — the deck's score, never recomputed for display |
+| Applicant counts | Done — shown on every listing |
 | Database | Live on Supabase; all pages read from Postgres |
 | Candidate swipe persistence | Done — `POST /api/swipes`, idempotent |
 | Employer swipe persistence | Done — reason-coded passes are written |
@@ -201,6 +206,12 @@ and swipes cascade off jobs:
 
 ```bash
 node --env-file=.env.local scripts/backfill-0006.mjs
+```
+
+Empty employer pipelines mean nobody has applied. Seed the inbound direction:
+
+```bash
+node --env-file=.env.local scripts/seed-applicants.mjs
 ```
 
 ## Next
