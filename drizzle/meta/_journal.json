@@ -43,6 +43,13 @@
       "when": 1788116110404,
       "tag": "0005_align_availability_boundary",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1788121463137,
+      "tag": "0006_absurd_shocker",
+      "breakpoints": true
     }
   ]
 }

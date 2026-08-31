@@ -2,6 +2,16 @@ import Link from "next/link";
 import { listOpenJobs } from "@/db/queries";
 import { formatLpaRange } from "@/lib/types";
 
+/**
+ * Read fresh on every request.
+ *
+ * Without this Next prerenders the page at build time — it has no fetch() to
+ * infer freshness from, only a database call it cannot see into — and the
+ * deployed site then serves whatever jobs existed when the build ran. A job
+ * board frozen at build time is indistinguishable from a broken one.
+ */
+export const dynamic = "force-dynamic";
+
 export default async function Home() {
   const openJobs = await listOpenJobs();
 
@@ -19,18 +29,48 @@ export default async function Home() {
 
       <section className="mt-10">
         <h2 className="label text-seek">Candidate side</h2>
-        <Link
-          href="/candidate/deck"
-          className="mt-3 flex items-center justify-between gap-4 rounded-lg border border-line bg-surface px-5 py-4 transition-colors hover:border-seek"
-        >
-          <div>
-            <p className="text-[15px] font-semibold">Role deck</p>
-            <p className="mt-0.5 text-[13.5px] text-muted">
-              Swipe roles, not companies. Signed in as Ananya Rao.
-            </p>
-          </div>
-          <Arrow />
-        </Link>
+        <p className="mt-2 text-[13.5px] text-muted">
+          Signed in as Ananya Rao until accounts land.
+        </p>
+        <ul className="mt-3 flex flex-col gap-2">
+          {[
+            {
+              href: "/jobs",
+              title: "Search jobs",
+              blurb:
+                "Filter by experience, salary, location, work mode and freshness.",
+            },
+            {
+              href: "/candidate/deck",
+              title: "Role deck",
+              blurb: "Swipe roles, not companies. Five at a time, ranked.",
+            },
+            {
+              href: "/candidate/applications",
+              title: "Applications",
+              blurb: "Where everything you sent actually went.",
+            },
+            {
+              href: "/candidate/profile",
+              title: "Profile",
+              blurb:
+                "Profile strength, recruiter activity and why people passed.",
+            },
+          ].map((item) => (
+            <li key={item.href}>
+              <Link
+                href={item.href}
+                className="flex items-center justify-between gap-4 rounded-lg border border-line bg-surface px-5 py-4 transition-colors hover:border-seek"
+              >
+                <div className="min-w-0">
+                  <p className="text-[15px] font-semibold">{item.title}</p>
+                  <p className="mt-0.5 text-[13.5px] text-muted">{item.blurb}</p>
+                </div>
+                <Arrow />
+              </Link>
+            </li>
+          ))}
+        </ul>
       </section>
 
       <section className="mt-8">

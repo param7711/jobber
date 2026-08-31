@@ -70,6 +70,12 @@ export const jobs: Job[] = [
     ],
     maxNoticeDays: 60,
     status: "open",
+    experienceMin: 5,
+    experienceMax: 9,
+    openings: 1,
+    postedAt: "2026-08-06T09:00:00.000Z",
+    jdText:
+      "You would own our order and inventory services end to end — the two systems every other team at Meridian depends on. Roughly half the work this year is splitting a Postgres instance that has outgrown one box, and the other half is the boring, load-bearing kind: better instrumentation, fewer 2am pages, a deploy pipeline people trust. Small team, no separate ops group; you carry a pager one week in five.",
   },
   {
     id: "job_kavach_fe",
@@ -93,6 +99,12 @@ export const jobs: Job[] = [
     ],
     maxNoticeDays: 90,
     status: "open",
+    experienceMin: 3,
+    experienceMax: 6,
+    openings: 4,
+    postedAt: "2026-08-24T09:00:00.000Z",
+    jdText:
+      "Kavach Pay's checkout is used by small merchants on cheap Android phones over patchy networks, and that constraint decides most of our frontend arguments. You would work on the checkout flow itself: retries that do not double-charge, states that survive a dropped connection, a bundle we keep arguing down in size. You will sit with designers directly — we do not hand specs across a wall.",
   },
   {
     id: "job_tarang_data",
@@ -116,6 +128,12 @@ export const jobs: Job[] = [
     ],
     maxNoticeDays: 60,
     status: "open",
+    experienceMin: 3,
+    experienceMax: 6,
+    openings: 3,
+    postedAt: "2026-08-28T09:00:00.000Z",
+    jdText:
+      "We turn satellite imagery and ground sensor feeds into agricultural risk models, which means most of the engineering is defending against upstream data that lies. You would own the ingestion pipelines: schema drift, late-arriving partitions, a sensor that reports -999 for a fortnight. Fully remote, and you would be the only data engineer for at least the next two quarters.",
   },
   {
     id: "job_kavach_be",
@@ -139,6 +157,12 @@ export const jobs: Job[] = [
     ],
     maxNoticeDays: 90,
     status: "open",
+    experienceMin: 5,
+    experienceMax: 9,
+    openings: 1,
+    postedAt: "2026-08-30T09:00:00.000Z",
+    jdText:
+      "Payments backend: settlement, reconciliation and the UPI integration. The whole job is that money must not move twice, so you would spend real time on idempotency keys, ledger design and the reconciliation job that catches what the happy path missed. Expect to be paged. Expect to read a lot of NPCI documentation.",
   },
   {
     id: "job_tarang_platform",
@@ -162,6 +186,12 @@ export const jobs: Job[] = [
     ],
     maxNoticeDays: 60,
     status: "open",
+    experienceMin: 5,
+    experienceMax: 9,
+    openings: 2,
+    postedAt: "2026-08-17T09:00:00.000Z",
+    jdText:
+      "First platform hire. Twelve engineers deploy to a Kubernetes cluster nobody currently owns, and the cloud bill is roughly twice what it should be — that is your first quarter. After that it is yours to shape: CI that does not take twenty minutes, runbooks somebody else can follow, and enough observability that we stop guessing. Remote, with two on-site weeks a year.",
   },
 ];
 

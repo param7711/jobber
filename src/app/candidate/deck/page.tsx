@@ -8,12 +8,10 @@ import {
   passFeedbackForCandidate,
 } from "@/db/queries";
 import { profileCompleteness } from "@/lib/completeness";
+import { DEMO_CANDIDATE_ID } from "@/lib/demo";
 
-/**
- * Signed-in candidate is hard-coded until auth lands. The uuid is the
- * deterministic id the seed script derives for "cand_ananya".
- */
-const DEMO_CANDIDATE_ID = "d8932092-0000-4000-8000-d8932092d893";
+/** The deck changes as roles open and swipes land; see app/page.tsx. */
+export const dynamic = "force-dynamic";
 
 export default async function CandidateDeckPage() {
   const candidate = await getCandidate(DEMO_CANDIDATE_ID);

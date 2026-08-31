@@ -270,6 +270,15 @@ export const jobs = pgTable(
       .notNull()
       .default([]),
     jdText: text("jd_text"),
+    /**
+     * Experience band, in years. Every Indian job board leads with this filter
+     * because it is the first thing a candidate self-selects on — "5-9 Yrs" is
+     * more load-bearing than the title. Null max means open-ended.
+     */
+    experienceMin: real("experience_min").notNull().default(0),
+    experienceMax: real("experience_max"),
+    /** How many people they are actually hiring. Signals seriousness. */
+    openings: integer("openings").notNull().default(1),
     /** Structured output of the JD parse, confirmed by the recruiter. */
     requirements: jsonb("requirements").$type<{
       mustHave: string[];
@@ -341,9 +350,13 @@ export const deckItems = pgTable(
 );
 
 /**
- * Append-only. `jobId` is what makes a swipe mean "this person, for this role"
- * rather than a vague expression of interest; `rankShown` and `latencyMs` are
- * how deck quality gets debugged later.
+ * One standing decision per (actor, subject, job) — the unique index below.
+ * A reversal updates the row rather than adding one; see /api/swipes, which
+ * explains why silently dropping the second decision was a bug.
+ *
+ * `jobId` is what makes a swipe mean "this person, for this role" rather than
+ * a vague expression of interest; `rankShown` and `latencyMs` are how deck
+ * quality gets debugged later.
  */
 export const swipes = pgTable(
   "swipes",
@@ -388,6 +401,30 @@ export const matches = pgTable(
       .defaultNow(),
   },
   (t) => [uniqueIndex("match_unique").on(t.jobId, t.candidateId)],
+);
+
+/**
+ * Bookmarks. A swipe is a decision; this is "not now, but keep it" — the deck
+ * has no gesture for that, and without somewhere to put it people right-swipe
+ * roles they are lukewarm on and poison their own match quality.
+ *
+ * Deliberately NOT a swipe row: saving must stay invisible to the employer.
+ */
+export const savedJobs = pgTable(
+  "saved_jobs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    candidateId: uuid("candidate_id")
+      .notNull()
+      .references(() => candidateProfiles.userId, { onDelete: "cascade" }),
+    jobId: uuid("job_id")
+      .notNull()
+      .references(() => jobs.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [uniqueIndex("saved_job_unique").on(t.candidateId, t.jobId)],
 );
 
 /* ---------------------------------------------------------------- resumes */

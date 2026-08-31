@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, ne, or, sql } from "drizzle-orm";
 import { db } from "./index";
 import {
   candidateProfiles,
@@ -8,7 +8,9 @@ import {
   educations,
   experiences,
   jobs,
+  matches,
   proofLinks,
+  savedJobs,
   stealthBlocks,
   swipes,
 } from "./schema";
@@ -16,8 +18,10 @@ import type {
   Candidate,
   Company,
   DeckItem,
+  EmploymentType,
   Job,
   PassReason,
+  RemotePreference,
 } from "@/lib/types";
 
 /**
@@ -134,6 +138,11 @@ function toJob(row: typeof jobs.$inferSelect): Job {
     whatMatters: row.requirements?.whatMatters ?? [],
     maxNoticeDays: row.maxNoticeDays ?? 90,
     status: row.status,
+    experienceMin: row.experienceMin,
+    experienceMax: row.experienceMax,
+    openings: row.openings,
+    postedAt: row.createdAt.toISOString(),
+    jdText: row.jdText ?? "",
   };
 }
 
@@ -430,6 +439,286 @@ export async function searchCandidates(
     .limit(50);
 
   return hydrateCandidates(rows);
+}
+
+/* -------------------------------------------------- candidate-side search */
+
+export interface JobFilters {
+  /** Free text over title, company and the requirement lists. */
+  q?: string;
+  /** Matched against the job's city, and never excludes remote roles. */
+  location?: string;
+  /** The candidate's own years. Keeps jobs whose band contains it. */
+  experience?: number;
+  /** Rupees per annum. Keeps jobs whose ceiling clears it. */
+  minCtc?: number;
+  workModes?: RemotePreference[];
+  employmentTypes?: EmploymentType[];
+  postedWithinDays?: number;
+}
+
+/**
+ * Job search for candidates — the front door every Indian job board has and
+ * this app did not.
+ *
+ * The deck is the opinionated path: five roles, ranked, one decision each. But
+ * a candidate who already knows they want "Backend, Bangalore, 30 LPA+" finds
+ * a deck patronising, and leaves. Search is the escape hatch, mirroring
+ * searchCandidates() on the employer side.
+ */
+export async function searchJobs(filters: JobFilters) {
+  const conditions = [eq(jobs.status, "open")];
+
+  const q = filters.q?.trim();
+  if (q) {
+    // Every term must appear somewhere. Same rule as the recruiter search:
+    // "react native" should not return every React job in the country.
+    for (const term of q.split(/\s+/).filter(Boolean)) {
+      const like = `%${term}%`;
+      conditions.push(sql`(
+        ${jobs.title} ILIKE ${like}
+        OR ${companies.name} ILIKE ${like}
+        OR ${jobs.jdText} ILIKE ${like}
+        OR EXISTS (
+          SELECT 1 FROM jsonb_array_elements_text(
+            coalesce(${jobs.requirements} -> 'mustHave', '[]'::jsonb)
+            || coalesce(${jobs.requirements} -> 'niceToHave', '[]'::jsonb)
+          ) AS skill
+          WHERE skill ILIKE ${like}
+        )
+      )`);
+    }
+  }
+
+  if (filters.location?.trim()) {
+    const like = `%${filters.location.trim()}%`;
+    // A remote role is available from anywhere, so filtering it out by city
+    // would be wrong — the location filter narrows, it does not exclude.
+    conditions.push(
+      sql`(${jobs.city} ILIKE ${like} OR ${jobs.remote} = 'remote')`,
+    );
+  }
+
+  if (filters.experience !== undefined) {
+    conditions.push(
+      sql`${jobs.experienceMin} <= ${filters.experience}
+          AND (${jobs.experienceMax} IS NULL OR ${jobs.experienceMax} >= ${filters.experience})`,
+    );
+  }
+
+  if (filters.minCtc !== undefined) {
+    conditions.push(sql`${jobs.ctcMax} >= ${filters.minCtc}`);
+  }
+
+  if (filters.workModes?.length) {
+    const modes = or(...filters.workModes.map((m) => eq(jobs.remote, m)));
+    if (modes) conditions.push(modes);
+  }
+
+  if (filters.employmentTypes?.length) {
+    const types = or(
+      ...filters.employmentTypes.map((t) => eq(jobs.employmentType, t)),
+    );
+    if (types) conditions.push(types);
+  }
+
+  if (filters.postedWithinDays !== undefined) {
+    conditions.push(
+      sql`${jobs.createdAt} > now() - (${filters.postedWithinDays} || ' days')::interval`,
+    );
+  }
+
+  const rows = await db
+    .select({ job: jobs, company: companies })
+    .from(jobs)
+    .innerJoin(companies, eq(companies.id, jobs.companyId))
+    .where(and(...conditions))
+    .orderBy(desc(jobs.createdAt))
+    .limit(50);
+
+  return rows.map((r) => ({ job: toJob(r.job), company: toCompany(r.company) }));
+}
+
+/** Other open roles sharing must-have skills. Ranked by overlap, then recency. */
+export async function similarJobs(job: Job, limit = 3) {
+  const rows = await db
+    .select({ job: jobs, company: companies })
+    .from(jobs)
+    .innerJoin(companies, eq(companies.id, jobs.companyId))
+    .where(and(eq(jobs.status, "open"), ne(jobs.id, job.id)))
+    .orderBy(desc(jobs.createdAt));
+
+  const wanted = new Set(job.mustHave.map((s) => s.toLowerCase()));
+
+  return rows
+    .map((r) => {
+      const other = toJob(r.job);
+      const overlap = other.mustHave.filter((s) =>
+        wanted.has(s.toLowerCase()),
+      ).length;
+      return { job: other, company: toCompany(r.company), overlap };
+    })
+    .filter((r) => r.overlap > 0 || r.job.seniority === job.seniority)
+    .sort((a, b) => b.overlap - a.overlap)
+    .slice(0, limit);
+}
+
+export async function getCompanyWithJobs(companyId: string) {
+  const [company] = await db
+    .select()
+    .from(companies)
+    .where(eq(companies.id, companyId))
+    .limit(1);
+  if (!company) return null;
+
+  const rows = await db
+    .select()
+    .from(jobs)
+    .where(and(eq(jobs.companyId, companyId), eq(jobs.status, "open")))
+    .orderBy(desc(jobs.createdAt));
+
+  return {
+    company: toCompany(company),
+    verified: company.verifiedAt !== null,
+    openJobs: rows.map(toJob),
+  };
+}
+
+/* ---------------------------------------------------------- saved + applied */
+
+export async function savedJobIdsFor(candidateId: string): Promise<Set<string>> {
+  const rows = await db
+    .select({ jobId: savedJobs.jobId })
+    .from(savedJobs)
+    .where(eq(savedJobs.candidateId, candidateId));
+  return new Set(rows.map((r) => r.jobId));
+}
+
+export async function listSavedJobs(candidateId: string) {
+  const rows = await db
+    .select({ job: jobs, company: companies, savedAt: savedJobs.createdAt })
+    .from(savedJobs)
+    .innerJoin(jobs, eq(jobs.id, savedJobs.jobId))
+    .innerJoin(companies, eq(companies.id, jobs.companyId))
+    .where(eq(savedJobs.candidateId, candidateId))
+    .orderBy(desc(savedJobs.createdAt));
+
+  return rows.map((r) => ({
+    job: toJob(r.job),
+    company: toCompany(r.company),
+    savedAt: r.savedAt.toISOString(),
+  }));
+}
+
+/** Has this candidate already decided on this role? Null means not yet. */
+export async function candidateDecisionOn(candidateId: string, jobId: string) {
+  const [row] = await db
+    .select({ direction: swipes.direction })
+    .from(swipes)
+    .where(
+      and(
+        eq(swipes.actorType, "candidate"),
+        eq(swipes.actorId, candidateId),
+        eq(swipes.jobId, jobId),
+      ),
+    )
+    .limit(1);
+  return row?.direction ?? null;
+}
+
+export type ApplicationStatus = "matched" | "awaiting";
+
+/**
+ * The application tracker — "where did my applications go", which is the
+ * single loudest complaint about every job board here.
+ *
+ * An application IS a candidate right-swipe; there is no separate table,
+ * because a second source of truth would drift from the swipe log.
+ *
+ * Deliberately absent: any "they rejected you" state. A per-company rejection
+ * shown to a candidate is the product passFeedbackForCandidate() exists to
+ * avoid being — aggregate patterns help, individual verdicts only hurt.
+ */
+export async function applicationsForCandidate(candidateId: string) {
+  const rows = await db
+    .select({
+      job: jobs,
+      company: companies,
+      appliedAt: swipes.createdAt,
+      matchState: matches.state,
+    })
+    .from(swipes)
+    .innerJoin(jobs, eq(jobs.id, swipes.jobId))
+    .innerJoin(companies, eq(companies.id, jobs.companyId))
+    .leftJoin(
+      matches,
+      and(eq(matches.jobId, swipes.jobId), eq(matches.candidateId, candidateId)),
+    )
+    .where(
+      and(
+        eq(swipes.actorType, "candidate"),
+        eq(swipes.actorId, candidateId),
+        eq(swipes.direction, "right"),
+      ),
+    )
+    .orderBy(desc(swipes.createdAt));
+
+  return rows.map((r) => ({
+    job: toJob(r.job),
+    company: toCompany(r.company),
+    appliedAt: r.appliedAt.toISOString(),
+    status: (r.matchState === "open" || r.matchState === "hired"
+      ? "matched"
+      : "awaiting") as ApplicationStatus,
+  }));
+}
+
+/* ------------------------------------------------------ recruiter activity */
+
+export interface RecruiterActivity {
+  /** Open requisitions this candidate is currently ranked into. */
+  inDecks: number;
+  /** Employer right-swipes. The number that actually means something. */
+  shortlisted: number;
+  /** Distinct companies whose recruiter has seen and acted on the card. */
+  companiesReached: number;
+  lastActivityAt: string | null;
+}
+
+/**
+ * "Recruiter actions on your profile", the one candidate-side number every
+ * Indian job board sells a subscription for — except each figure here is
+ * defined, and the definition is shown next to it. A vague "23 recruiters
+ * viewed you" is unfalsifiable and mostly bot traffic.
+ */
+export async function recruiterActivityForCandidate(
+  candidateId: string,
+): Promise<RecruiterActivity> {
+  const [decks, acts] = await Promise.all([
+    db
+      .select({ n: sql<number>`count(*)::int` })
+      .from(deckItems)
+      .innerJoin(jobs, eq(jobs.id, deckItems.jobId))
+      .where(and(eq(deckItems.candidateId, candidateId), eq(jobs.status, "open"))),
+    db
+      .select({
+        shortlisted: sql<number>`count(*) FILTER (WHERE ${swipes.direction} = 'right')::int`,
+        companies: sql<number>`count(DISTINCT ${jobs.companyId})::int`,
+        last: sql<Date | null>`max(${swipes.createdAt})`,
+      })
+      .from(swipes)
+      .innerJoin(jobs, eq(jobs.id, swipes.jobId))
+      .where(
+        and(eq(swipes.actorType, "employer"), eq(swipes.subjectId, candidateId)),
+      ),
+  ]);
+
+  return {
+    inDecks: decks[0]?.n ?? 0,
+    shortlisted: acts[0]?.shortlisted ?? 0,
+    companiesReached: acts[0]?.companies ?? 0,
+    lastActivityAt: acts[0]?.last ? new Date(acts[0].last).toISOString() : null,
+  };
 }
 
 /** Candidates whose availability has gone stale and need a nudge. */

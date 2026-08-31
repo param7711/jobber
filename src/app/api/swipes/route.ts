@@ -1,3 +1,4 @@
+import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import { swipes } from "@/db/schema";
@@ -50,20 +51,64 @@ export async function POST(request: Request) {
     );
   }
 
+  const pair = and(
+    eq(swipes.actorId, actorId),
+    eq(swipes.subjectId, subjectId),
+    eq(swipes.jobId, jobId),
+  );
+
+  const [existing] = await db
+    .select({ direction: swipes.direction })
+    .from(swipes)
+    .where(pair)
+    .limit(1);
+
+  /*
+   * A person is allowed to change their mind.
+   *
+   * This used to be a bare onConflictDoNothing(), which was right when the
+   * deck was the only way to swipe: you never see the same card twice, so a
+   * repeat could only be a double-tap. It became wrong the moment a job could
+   * also be applied to from its listing page — someone who passed in the deck,
+   * then read the full description and wanted in, got {ok:true} and nothing
+   * happened. A success response for a discarded write is the worst kind of
+   * bug, because nobody reports it.
+   *
+   * The unique index still holds: one standing decision per (actor, subject,
+   * job). What changed is that a reversal updates that decision rather than
+   * being dropped on the floor, and the response says which happened so the
+   * UI never claims something the database did not do.
+   */
+  if (!existing) {
+    await db
+      .insert(swipes)
+      .values({
+        actorType,
+        actorId,
+        subjectId,
+        jobId,
+        direction,
+        passReason: direction === "left" ? (passReason ?? null) : null,
+        rankShown: rankShown ?? null,
+      })
+      // Two taps racing each other. The loser is a no-op, not a 500.
+      .onConflictDoNothing();
+
+    return Response.json({ ok: true, outcome: "recorded", direction });
+  }
+
+  if (existing.direction === direction) {
+    return Response.json({ ok: true, outcome: "unchanged", direction });
+  }
+
   await db
-    .insert(swipes)
-    .values({
-      actorType,
-      actorId,
-      subjectId,
-      jobId,
+    .update(swipes)
+    .set({
       direction,
       passReason: direction === "left" ? (passReason ?? null) : null,
-      rankShown: rankShown ?? null,
+      createdAt: new Date(),
     })
-    // Swiping the same subject twice is a no-op, not an error — the unique
-    // index on (actor, subject, job) is what makes the log idempotent.
-    .onConflictDoNothing();
+    .where(pair);
 
-  return Response.json({ ok: true });
+  return Response.json({ ok: true, outcome: "reversed", direction });
 }

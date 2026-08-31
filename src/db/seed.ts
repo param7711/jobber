@@ -92,6 +92,16 @@ async function main() {
       },
       maxNoticeDays: j.maxNoticeDays,
       status: j.status,
+      employmentType: j.employmentType,
+      screeningQuestions: j.screeningQuestions,
+      experienceMin: j.experienceMin,
+      experienceMax: j.experienceMax,
+      openings: j.openings,
+      // Absolute dates, so a seed run months from now produces a list where
+      // everything reads "posted 4 months ago" and the freshness filter looks
+      // broken. scripts/stagger-job-dates.mjs re-stamps them, exactly as
+      // refresh-availability.mjs does for candidates.
+      createdAt: new Date(j.postedAt),
     })),
   );
 

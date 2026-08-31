@@ -1,9 +1,7 @@
 import Link from "next/link";
 import { CandidateCard } from "@/components/CandidateCard";
 import { searchCandidates } from "@/db/queries";
-
-/** Hard-coded demo company until auth lands. Meridian Systems. */
-const DEMO_COMPANY_ID = "81591ebf-0000-4000-8000-81591ebf8159";
+import { DEMO_COMPANY_ID } from "@/lib/demo";
 
 export default async function SearchPage({
   searchParams,

@@ -131,7 +131,57 @@ export interface Job {
   whatMatters: string[];
   maxNoticeDays: number;
   status: "draft" | "open" | "closed";
+
+  /* --- listing fields: what a candidate scans before opening anything --- */
+  /** Years. Null max means open-ended. */
+  experienceMin: number;
+  experienceMax: number | null;
+  openings: number;
+  /** ISO date. Drives "Posted 3 days ago" and the freshness filter. */
+  postedAt: string;
+  /** The recruiter's own prose. Everything else on a job is structured. */
+  jdText: string;
 }
+
+/** "5-9 Yrs" — the band every Indian job board leads with. */
+export function formatExperience(min: number, max: number | null): string {
+  const n = (v: number) => (Number.isInteger(v) ? v : v.toFixed(1));
+  if (max === null) return `${n(min)}+ Yrs`;
+  if (min === 0) return `0-${n(max)} Yrs`;
+  return `${n(min)}-${n(max)} Yrs`;
+}
+
+/** Relative posting age, in the terms a job board uses. */
+export function postedAgo(iso: string, now: Date = new Date()): string {
+  const days = Math.floor(
+    (now.getTime() - new Date(iso).getTime()) / 86_400_000,
+  );
+  if (days <= 0) return "Posted today";
+  if (days === 1) return "Posted 1 day ago";
+  if (days < 30) return `Posted ${days} days ago`;
+  const months = Math.floor(days / 30);
+  return `Posted ${months} month${months > 1 ? "s" : ""} ago`;
+}
+
+export const WORK_MODE_LABEL: Record<RemotePreference, string> = {
+  onsite: "On-site",
+  hybrid: "Hybrid",
+  remote: "Remote",
+};
+
+export const EMPLOYMENT_TYPE_LABEL: Record<EmploymentType, string> = {
+  permanent: "Full-time",
+  contract: "Contract",
+  internship: "Internship",
+};
+
+export const SENIORITY_LABEL: Record<Seniority, string> = {
+  junior: "Junior",
+  mid: "Mid",
+  senior: "Senior",
+  staff: "Staff",
+  lead: "Lead",
+};
 
 /** A scored, materialised deck row. Built nightly per open requisition. */
 export interface DeckItem {
