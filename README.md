@@ -31,10 +31,18 @@ both sides of the marketplace.
 | Right-swipe budget | Done |
 | Availability freshness + decay | Done, enforced in queries |
 | Profile completeness meter | Done — weighted, one nudge at a time |
-| Preferred locations | Done — shown on cards, filterable in search |
-| Employment type | Schema + data; not yet surfaced |
-| Screening questions | Done — shown on the role card |
+| Preferred locations | Done — on cards, on the profile, filterable in search |
+| Employment type | Done — on the profile and as a `/jobs` filter |
+| Screening questions | Done — role card and the job listing page |
 | Recruiter keyword search | Done — `/employer/search` |
+| Candidate job search | Done — `/jobs`, seven filters, shareable URLs |
+| Job listing pages | Done — `/jobs/[id]`, with similar roles |
+| Company pages | Done — `/companies/[id]`, with the verification badge |
+| Candidate profile | Done — `/candidate/profile` |
+| Recruiter activity counters | Done — each figure defined next to it |
+| Application tracker | Done — `/candidate/applications` |
+| Saved jobs | Done — `saved_jobs`, owner-only RLS |
+| Site navigation | Done — persistent header |
 | Database | Live on Supabase; all pages read from Postgres |
 | Candidate swipe persistence | Done — `POST /api/swipes`, idempotent |
 | Employer swipe persistence | Done — reason-coded passes are written |
@@ -174,12 +182,25 @@ Two rules were tested against the live database rather than assumed:
 
 ## Demo data drifts
 
-Seeded availability dates are absolute, so after a couple of weeks everyone
-reads as stale and the freshness states stop illustrating anything. Re-stamp
-them:
+Seeded dates are absolute, so the demo decays: after a couple of weeks every
+candidate reads as stale, and every job reads as posted months ago, which makes
+the freshness states and the `/jobs` freshness filter stop illustrating
+anything. Re-stamp both:
 
 ```bash
 node --env-file=.env.local scripts/refresh-availability.mjs
+```
+
+```bash
+node --env-file=.env.local scripts/stagger-job-dates.mjs
+```
+
+A database seeded before migration 0006 has no job descriptions or experience
+bands. Fill them in without dropping the swipe log — re-seeding deletes jobs,
+and swipes cascade off jobs:
+
+```bash
+node --env-file=.env.local scripts/backfill-0006.mjs
 ```
 
 ## Next
@@ -189,10 +210,12 @@ node --env-file=.env.local scripts/refresh-availability.mjs
    Resume upload is the real ingest path, and the onboarding copy should say
    "import from your resume" rather than promise a LinkedIn sync.
 
-   This also unblocks two things that are currently stubbed: employer shortlist
-   persistence, and `actorId` on the swipe endpoint — which today is taken from
-   the request body, meaning a caller could log a swipe as anyone. Fine for a
-   single-user dev build, not fine in public.
+   This also unblocks what is currently stubbed: employer shortlist
+   persistence, profile editing, and the actor id on every write endpoint —
+   `/api/swipes`, `/api/saved-jobs` and `/api/availability` all take it from
+   the request body today, so a caller could act as anyone. Fine for a
+   single-user dev build, not fine in public. `src/lib/demo.ts` holds the
+   hard-coded identities and is the one file to delete when sessions land.
 
 2. **Resume parsing.** Needs `ANTHROPIC_API_KEY` in `.env.local`. Structured
    outputs against a strict schema, and the parse is always shown to the user
