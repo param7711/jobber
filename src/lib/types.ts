@@ -163,6 +163,25 @@ export function postedAgo(iso: string, now: Date = new Date()): string {
   return `Posted ${months} month${months > 1 ? "s" : ""} ago`;
 }
 
+/**
+ * How long a match has left.
+ *
+ * Expiry is what stops a match becoming another application that sits
+ * unanswered forever, so the countdown is shown rather than hidden — both
+ * sides should feel the clock.
+ */
+export function matchExpiry(
+  expiresAt: string,
+  now: Date = new Date(),
+): { expired: boolean; daysLeft: number; copy: string } {
+  const ms = new Date(expiresAt).getTime() - now.getTime();
+  const daysLeft = Math.ceil(ms / 86_400_000);
+
+  if (ms <= 0) return { expired: true, daysLeft: 0, copy: "Expired" };
+  if (daysLeft <= 1) return { expired: false, daysLeft, copy: "Expires today" };
+  return { expired: false, daysLeft, copy: `${daysLeft} days left` };
+}
+
 export const WORK_MODE_LABEL: Record<RemotePreference, string> = {
   onsite: "On-site",
   hybrid: "Hybrid",

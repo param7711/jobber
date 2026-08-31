@@ -46,6 +46,12 @@ export default async function Home() {
               blurb: "Swipe roles, not companies. Five at a time, ranked.",
             },
             {
+              href: "/candidate/matches",
+              title: "Matches",
+              blurb:
+                "Both sides swiped right. The only place a conversation starts.",
+            },
+            {
               href: "/candidate/applications",
               title: "Applications",
               blurb: "Where everything you sent actually went.",
@@ -93,22 +99,35 @@ export default async function Home() {
         <ul className="mt-3 flex flex-col gap-2">
           {openJobs.map(({ job, company }) => {
             return (
-              <li key={job.id}>
-                <Link
-                  href={`/employer/sourcing/${job.id}`}
-                  className="flex items-center justify-between gap-4 rounded-lg border border-line bg-surface px-5 py-4 transition-colors hover:border-hire"
-                >
-                  <div className="min-w-0">
-                    <p className="truncate text-[15px] font-semibold">
-                      {job.title}
-                    </p>
-                    <p className="mt-0.5 truncate font-mono text-[12.5px] text-muted">
-                      {company.name} · {formatLpaRange(job.ctcMin, job.ctcMax)}{" "}
-                      · {job.city}
-                    </p>
-                  </div>
-                  <Arrow />
-                </Link>
+              <li
+                key={job.id}
+                className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-line bg-surface px-5 py-4"
+              >
+                <div className="min-w-0">
+                  <p className="truncate text-[15px] font-semibold">
+                    {job.title}
+                  </p>
+                  <p className="mt-0.5 truncate font-mono text-[12.5px] text-muted">
+                    {company.name} · {formatLpaRange(job.ctcMin, job.ctcMax)} ·{" "}
+                    {job.city}
+                  </p>
+                </div>
+                {/* Two directions on every requisition: outbound sourcing, and
+                    the inbound applicants who already said yes. */}
+                <div className="flex shrink-0 gap-2">
+                  <Link
+                    href={`/employer/pipeline/${job.id}`}
+                    className="label rounded-sm border border-hire px-2.5 py-1.5 text-hire transition-colors hover:bg-hire-soft"
+                  >
+                    Pipeline
+                  </Link>
+                  <Link
+                    href={`/employer/sourcing/${job.id}`}
+                    className="label rounded-sm border border-line px-2.5 py-1.5 text-muted transition-colors hover:border-ink hover:text-ink"
+                  >
+                    Source
+                  </Link>
+                </div>
               </li>
             );
           })}

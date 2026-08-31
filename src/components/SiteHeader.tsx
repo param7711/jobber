@@ -20,6 +20,7 @@ import { cn } from "@/lib/utils";
 const CANDIDATE_LINKS = [
   { href: "/jobs", label: "Jobs" },
   { href: "/candidate/deck", label: "Deck" },
+  { href: "/candidate/matches", label: "Matches" },
   { href: "/candidate/applications", label: "Applications" },
   { href: "/candidate/profile", label: "Profile" },
 ];

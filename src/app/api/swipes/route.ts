@@ -1,6 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
+import { createMatchIfMutual } from "@/db/queries";
 import { swipes } from "@/db/schema";
 
 /**
@@ -51,6 +52,23 @@ export async function POST(request: Request) {
     );
   }
 
+  /**
+   * The candidate in this pair, whichever side is swiping. An employer swipes
+   * a candidate (subjectId); a candidate swipes a role, so they are the actor.
+   */
+  const candidateId = actorType === "candidate" ? actorId : subjectId;
+
+  /**
+   * A right swipe is only half a decision. This is the other half — the point
+   * where two independent yeses become a conversation, which is the entire
+   * mechanic the product is built on and was, until now, not implemented:
+   * both sides could swipe right forever and nothing happened.
+   */
+  const settleMatch = () =>
+    direction === "right"
+      ? createMatchIfMutual(jobId, candidateId)
+      : Promise.resolve(false);
+
   const pair = and(
     eq(swipes.actorId, actorId),
     eq(swipes.subjectId, subjectId),
@@ -94,7 +112,12 @@ export async function POST(request: Request) {
       // Two taps racing each other. The loser is a no-op, not a 500.
       .onConflictDoNothing();
 
-    return Response.json({ ok: true, outcome: "recorded", direction });
+    return Response.json({
+      ok: true,
+      outcome: "recorded",
+      direction,
+      matched: await settleMatch(),
+    });
   }
 
   if (existing.direction === direction) {
@@ -110,5 +133,10 @@ export async function POST(request: Request) {
     })
     .where(pair);
 
-  return Response.json({ ok: true, outcome: "reversed", direction });
+  return Response.json({
+    ok: true,
+    outcome: "reversed",
+    direction,
+    matched: await settleMatch(),
+  });
 }

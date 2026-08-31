@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNull, ne, or, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, ne, or, sql, type SQL } from "drizzle-orm";
 import { db } from "./index";
 import {
   candidateProfiles,
@@ -9,6 +9,7 @@ import {
   experiences,
   jobs,
   matches,
+  messages,
   proofLinks,
   savedJobs,
   stealthBlocks,
@@ -671,6 +672,297 @@ export async function applicationsForCandidate(candidateId: string) {
       ? "matched"
       : "awaiting") as ApplicationStatus,
   }));
+}
+
+/* ------------------------------------------------------------ mutual match */
+
+/**
+ * How long a match stays open before it expires.
+ *
+ * The expiry is the anti-ghosting mechanism and the reason this is worth
+ * building at all: an application that sits unanswered forever is the default
+ * experience everywhere else. Fourteen days is long enough for a recruiter on
+ * holiday and short enough that a candidate knows where they stand.
+ */
+export const MATCH_TTL_DAYS = 14;
+
+/**
+ * Creates the match when both sides have swiped right on the same pair.
+ *
+ * Called after every right swipe. Returns true only when this call is what
+ * completed the match, so the UI can celebrate exactly once.
+ *
+ * Both sides are re-read from the swipe log rather than trusted from the
+ * request: the caller knows its own swipe, not the other party's, and a match
+ * announced on one side but absent on the other is the worst possible bug in
+ * a two-sided marketplace.
+ */
+export async function createMatchIfMutual(jobId: string, candidateId: string) {
+  const [both] = await db
+    .select({
+      candidateYes: sql<boolean>`bool_or(
+        ${swipes.actorType} = 'candidate'
+        AND ${swipes.actorId} = ${candidateId}
+        AND ${swipes.direction} = 'right'
+      )`,
+      employerYes: sql<boolean>`bool_or(
+        ${swipes.actorType} = 'employer'
+        AND ${swipes.subjectId} = ${candidateId}
+        AND ${swipes.direction} = 'right'
+      )`,
+    })
+    .from(swipes)
+    .where(eq(swipes.jobId, jobId));
+
+  if (!both?.candidateYes || !both?.employerYes) return false;
+
+  const expiresAt = new Date(Date.now() + MATCH_TTL_DAYS * 86_400_000);
+
+  const created = await db
+    .insert(matches)
+    .values({ jobId, candidateId, state: "open", expiresAt })
+    // Already matched — the second right swipe of a reversal, say. Not an error.
+    .onConflictDoNothing()
+    .returning({ id: matches.id });
+
+  return created.length > 0;
+}
+
+export interface MatchSummary {
+  id: string;
+  job: Job;
+  company: Company;
+  candidateId: string;
+  candidateName: string;
+  state: "open" | "expired" | "closed" | "hired";
+  expiresAt: string;
+  createdAt: string;
+  messageCount: number;
+  lastMessageAt: string | null;
+  lastMessageBody: string | null;
+}
+
+/** Shared shape for both sides; only the WHERE clause differs. */
+async function matchSummaries(where: SQL) {
+  const rows = await db
+    .select({
+      match: matches,
+      job: jobs,
+      company: companies,
+      candidateName: candidateProfiles.name,
+      messageCount: sql<number>`(
+        SELECT count(*)::int FROM ${messages} m WHERE m.match_id = ${matches.id}
+      )`,
+      lastMessageAt: sql<Date | null>`(
+        SELECT max(m.created_at) FROM ${messages} m WHERE m.match_id = ${matches.id}
+      )`,
+      lastMessageBody: sql<string | null>`(
+        SELECT m.body FROM ${messages} m
+        WHERE m.match_id = ${matches.id}
+        ORDER BY m.created_at DESC LIMIT 1
+      )`,
+    })
+    .from(matches)
+    .innerJoin(jobs, eq(jobs.id, matches.jobId))
+    .innerJoin(companies, eq(companies.id, jobs.companyId))
+    .innerJoin(
+      candidateProfiles,
+      eq(candidateProfiles.userId, matches.candidateId),
+    )
+    .where(where)
+    .orderBy(desc(matches.createdAt));
+
+  return rows.map(
+    (r): MatchSummary => ({
+      id: r.match.id,
+      job: toJob(r.job),
+      company: toCompany(r.company),
+      candidateId: r.match.candidateId,
+      candidateName: r.candidateName,
+      state: r.match.state,
+      expiresAt: r.match.expiresAt.toISOString(),
+      createdAt: r.match.createdAt.toISOString(),
+      messageCount: r.messageCount,
+      lastMessageAt: r.lastMessageAt
+        ? new Date(r.lastMessageAt).toISOString()
+        : null,
+      lastMessageBody: r.lastMessageBody,
+    }),
+  );
+}
+
+export function matchesForCandidate(candidateId: string) {
+  return matchSummaries(eq(matches.candidateId, candidateId));
+}
+
+export function matchesForJob(jobId: string) {
+  return matchSummaries(eq(matches.jobId, jobId));
+}
+
+export async function getMatch(matchId: string) {
+  const [match] = await matchSummaries(eq(matches.id, matchId));
+  return match ?? null;
+}
+
+export interface ThreadMessage {
+  id: string;
+  senderId: string;
+  body: string;
+  createdAt: string;
+}
+
+export async function messagesForMatch(matchId: string): Promise<ThreadMessage[]> {
+  const rows = await db
+    .select()
+    .from(messages)
+    .where(eq(messages.matchId, matchId))
+    .orderBy(messages.createdAt);
+
+  return rows.map((r) => ({
+    id: r.id,
+    senderId: r.senderId,
+    body: r.body,
+    createdAt: r.createdAt.toISOString(),
+  }));
+}
+
+/* ------------------------------------------------------------- applicants */
+
+export interface Applicant {
+  candidate: Candidate;
+  appliedAt: string;
+  /**
+   * Whole days this person has been waiting, measured by the database rather
+   * than at render time — a component that reads the clock is impure, and the
+   * number is more honest coming from the same clock that stamped the row.
+   */
+  waitedDays: number;
+  /** The employer's standing decision on them, if any. */
+  employerDecision: "left" | "right" | null;
+  matched: boolean;
+}
+
+/**
+ * Who applied to this requisition.
+ *
+ * This was the hole in the middle of the product: candidates could right-swipe
+ * a role and the employer had no screen on which that ever appeared. Inbound
+ * interest went into the swipe log and stopped there.
+ *
+ * Ordered oldest first on purpose — the person who applied a week ago has been
+ * waiting longest, and a newest-first list is how applications rot at the
+ * bottom of a queue.
+ */
+export async function applicantsForJob(jobId: string): Promise<Applicant[]> {
+  const rows = await db
+    .select({
+      profile: candidateProfiles,
+      appliedAt: swipes.createdAt,
+      waitedDays: sql<number>`floor(
+        extract(epoch from now() - ${swipes.createdAt}) / 86400
+      )::int`,
+      employerDecision: sql<"left" | "right" | null>`(
+        SELECT e.direction FROM ${swipes} e
+        WHERE e.actor_type = 'employer'
+          AND e.job_id = ${jobId}
+          AND e.subject_id = ${swipes.actorId}
+        LIMIT 1
+      )`,
+      matched: sql<boolean>`EXISTS (
+        SELECT 1 FROM ${matches} m
+        WHERE m.job_id = ${jobId} AND m.candidate_id = ${swipes.actorId}
+      )`,
+    })
+    .from(swipes)
+    .innerJoin(
+      candidateProfiles,
+      eq(candidateProfiles.userId, swipes.actorId),
+    )
+    .where(
+      and(
+        eq(swipes.jobId, jobId),
+        eq(swipes.actorType, "candidate"),
+        eq(swipes.direction, "right"),
+      ),
+    )
+    .orderBy(swipes.createdAt);
+
+  const hydrated = await hydrateCandidates(rows.map((r) => r.profile));
+
+  return rows.map((r, i) => ({
+    candidate: hydrated[i],
+    appliedAt: r.appliedAt.toISOString(),
+    waitedDays: r.waitedDays,
+    employerDecision: r.employerDecision,
+    matched: r.matched,
+  }));
+}
+
+/**
+ * Applicant counts per job, for the listing badges.
+ *
+ * "Be an early applicant" is worth showing because it is true and useful — a
+ * role with four applicants really is a better use of your afternoon than one
+ * with two hundred. It is only honest while the count beside it is real, which
+ * is why both render together or not at all.
+ */
+export async function applicantCounts(
+  jobIds: string[],
+): Promise<Map<string, number>> {
+  if (jobIds.length === 0) return new Map();
+
+  const rows = await db
+    .select({ jobId: swipes.jobId, n: sql<number>`count(*)::int` })
+    .from(swipes)
+    .where(
+      and(
+        inArray(swipes.jobId, jobIds),
+        eq(swipes.actorType, "candidate"),
+        eq(swipes.direction, "right"),
+      ),
+    )
+    .groupBy(swipes.jobId);
+
+  return new Map(rows.map((r) => [r.jobId, r.n]));
+}
+
+/* ------------------------------------------------------------- fit scoring */
+
+export interface JobFit {
+  /** 0-100. The materialised deck score, rescaled for display. */
+  percent: number;
+  rationale: string;
+}
+
+/**
+ * The candidate's fit against jobs, from the same materialised scores the deck
+ * ranks on — never recomputed here, or the number on the listing page would
+ * disagree with the order of the deck and both would look wrong.
+ *
+ * Only jobs already scored for this candidate appear. A missing entry means
+ * "not scored yet", which the UI shows as nothing rather than as a zero.
+ */
+export async function fitScoresFor(
+  candidateId: string,
+): Promise<Map<string, JobFit>> {
+  const rows = await db
+    .select({
+      jobId: deckItems.jobId,
+      score: deckItems.score,
+      rationale: deckItems.rationale,
+    })
+    .from(deckItems)
+    .where(eq(deckItems.candidateId, candidateId));
+
+  return new Map(
+    rows.map((r) => [
+      r.jobId,
+      {
+        percent: Math.round(Math.max(0, Math.min(1, r.score)) * 100),
+        rationale: r.rationale ?? "",
+      },
+    ]),
+  );
 }
 
 /* ------------------------------------------------------ recruiter activity */

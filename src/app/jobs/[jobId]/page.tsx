@@ -3,8 +3,11 @@ import { notFound } from "next/navigation";
 import { Briefcase, Clock, IndianRupee, MapPin, Users } from "lucide-react";
 import { ApplyButton } from "@/components/ApplyButton";
 import { SaveJobButton } from "@/components/SaveJobButton";
+import { ApplicantCount, FitBadge } from "@/components/FitBadge";
 import {
+  applicantCounts,
   candidateDecisionOn,
+  fitScoresFor,
   getJobWithCompany,
   savedJobIdsFor,
   similarJobs,
@@ -28,11 +31,16 @@ export default async function JobPage({ params }: PageProps<"/jobs/[jobId]">) {
   if (!found) notFound();
   const { job, company } = found;
 
-  const [savedIds, decision, similar] = await Promise.all([
+  const [savedIds, decision, similar, fits, applicants] = await Promise.all([
     savedJobIdsFor(DEMO_CANDIDATE_ID),
     candidateDecisionOn(DEMO_CANDIDATE_ID, job.id),
     similarJobs(job),
+    fitScoresFor(DEMO_CANDIDATE_ID),
+    applicantCounts([job.id]),
   ]);
+
+  const fit = fits.get(job.id);
+  const applicantCount = applicants.get(job.id) ?? 0;
 
   return (
     <main className="mx-auto w-full max-w-3xl px-4 pb-16 sm:px-6">
@@ -103,6 +111,12 @@ export default async function JobPage({ params }: PageProps<"/jobs/[jobId]">) {
           />
         </dl>
 
+        {fit && (
+          <div className="mt-4 rounded-sm border border-line-soft bg-surface-2 p-3">
+            <FitBadge fit={fit} showWhy />
+          </div>
+        )}
+
         <div className="mt-4 flex flex-wrap items-center gap-3">
           <ApplyButton
             candidateId={DEMO_CANDIDATE_ID}
@@ -119,6 +133,7 @@ export default async function JobPage({ params }: PageProps<"/jobs/[jobId]">) {
           <span className="font-mono text-[12px] text-muted">
             {postedAgo(job.postedAt)}
           </span>
+          <ApplicantCount n={applicantCount} />
         </div>
       </article>
 

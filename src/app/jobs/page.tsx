@@ -1,7 +1,12 @@
 import Link from "next/link";
 import { FilterPanel } from "@/components/FilterPanel";
 import { JobCard } from "@/components/JobCard";
-import { savedJobIdsFor, searchJobs } from "@/db/queries";
+import {
+  applicantCounts,
+  fitScoresFor,
+  savedJobIdsFor,
+  searchJobs,
+} from "@/db/queries";
 import { DEMO_CANDIDATE_ID } from "@/lib/demo";
 import {
   EMPLOYMENT_TYPE_LABEL,
@@ -69,7 +74,7 @@ export default async function JobsPage({
     modes.length +
     types.length;
 
-  const [results, savedIds] = await Promise.all([
+  const [results, savedIds, fits] = await Promise.all([
     searchJobs({
       q,
       location,
@@ -81,7 +86,30 @@ export default async function JobsPage({
       postedWithinDays: posted ? Number(posted) : undefined,
     }),
     savedJobIdsFor(DEMO_CANDIDATE_ID),
+    fitScoresFor(DEMO_CANDIDATE_ID),
   ]);
+
+  // Counted in a second pass because the set of jobs is not known until the
+  // search has run. One query for the whole page, not one per card.
+  const applicants = await applicantCounts(results.map((r) => r.job.id));
+
+  /**
+   * Roles scored 80+ against this profile, shown first and only when the
+   * candidate has not narrowed things themselves. A recommendation strip on
+   * top of an explicit search is a product overruling the person using it.
+   */
+  const recommended = filtered
+    ? []
+    : results
+        .filter((r) => (fits.get(r.job.id)?.percent ?? 0) >= 80)
+        .sort(
+          (a, b) =>
+            (fits.get(b.job.id)?.percent ?? 0) - (fits.get(a.job.id)?.percent ?? 0),
+        )
+        .slice(0, 2);
+
+  const recommendedIds = new Set(recommended.map((r) => r.job.id));
+  const rest = results.filter((r) => !recommendedIds.has(r.job.id));
 
   return (
     <main className="mx-auto w-full max-w-6xl px-4 pb-16 sm:px-6">
@@ -226,14 +254,37 @@ export default async function JobsPage({
                   }. Newest first.`}
             </p>
 
+            {recommended.length > 0 && (
+              <section className="mt-4">
+                <h2 className="label text-seek">Matched to your profile</h2>
+                <ul className="mt-2 flex flex-col gap-3">
+                  {recommended.map(({ job, company }) => (
+                    <li key={job.id}>
+                      <JobCard
+                        job={job}
+                        company={company}
+                        candidateId={DEMO_CANDIDATE_ID}
+                        saved={savedIds.has(job.id)}
+                        fit={fits.get(job.id)}
+                        applicants={applicants.get(job.id) ?? 0}
+                      />
+                    </li>
+                  ))}
+                </ul>
+                <h2 className="label mt-6 text-muted">Everything else</h2>
+              </section>
+            )}
+
             <ul className="mt-4 flex flex-col gap-3">
-              {results.map(({ job, company }) => (
+              {rest.map(({ job, company }) => (
                 <li key={job.id}>
                   <JobCard
                     job={job}
                     company={company}
                     candidateId={DEMO_CANDIDATE_ID}
                     saved={savedIds.has(job.id)}
+                    fit={fits.get(job.id)}
+                    applicants={applicants.get(job.id) ?? 0}
                   />
                 </li>
               ))}

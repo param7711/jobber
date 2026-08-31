@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { Briefcase, IndianRupee, MapPin, Users } from "lucide-react";
+import { ApplicantCount, FitBadge } from "@/components/FitBadge";
 import { SaveJobButton } from "@/components/SaveJobButton";
+import type { JobFit } from "@/db/queries";
 import {
   EMPLOYMENT_TYPE_LABEL,
   WORK_MODE_LABEL,
@@ -25,11 +27,17 @@ export function JobCard({
   company,
   candidateId,
   saved,
+  fit,
+  applicants,
 }: {
   job: Job;
   company: Company;
   candidateId: string;
   saved: boolean;
+  /** Undefined when this role has not been scored for this candidate yet. */
+  fit?: JobFit;
+  /** Undefined when counts were not fetched; 0 is a real, different answer. */
+  applicants?: number;
 }) {
   const location =
     job.remote === "remote" ? "Remote" : `${job.city} · ${WORK_MODE_LABEL[job.remote]}`;
@@ -108,10 +116,22 @@ export function JobCard({
         </ul>
       )}
 
+      {fit && (
+        <div className="mt-3">
+          <FitBadge fit={fit} />
+        </div>
+      )}
+
       <footer className="mt-3.5 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-line-soft pt-3 font-mono text-[11.5px] text-muted">
         <span>{postedAgo(job.postedAt)}</span>
         <span aria-hidden>·</span>
         <span>{EMPLOYMENT_TYPE_LABEL[job.employmentType]}</span>
+        {applicants !== undefined && (
+          <>
+            <span aria-hidden>·</span>
+            <ApplicantCount n={applicants} />
+          </>
+        )}
       </footer>
     </article>
   );
