@@ -117,7 +117,10 @@ export default async function JobPage({ params }: PageProps<"/jobs/[jobId]">) {
           </div>
         )}
 
-        <div className="mt-4 flex flex-wrap items-center gap-3">
+        {/* Hidden on a phone: the same two controls live in the sticky bar at
+            the bottom of the viewport, and having both would mean tapping
+            Apply scrolls a duplicate of itself into view. */}
+        <div className="mt-4 hidden flex-wrap items-center gap-3 sm:flex">
           <ApplyButton
             candidateId={DEMO_CANDIDATE_ID}
             jobId={job.id}
@@ -264,6 +267,34 @@ export default async function JobPage({ params }: PageProps<"/jobs/[jobId]">) {
           </ul>
         </Section>
       )}
+
+      {/*
+        Sticky action bar, phones only.
+        A job description is long, the decision is one tap, and asking someone
+        to scroll back up to the top to make it is how applications get
+        abandoned halfway down. Pinned to the bottom because that is where a
+        thumb already is.
+      */}
+      <div className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-surface/95 px-4 py-3 backdrop-blur-sm sm:hidden">
+        <div className="flex items-center gap-2.5">
+          <div className="min-w-0 flex-1">
+            <ApplyButton
+              candidateId={DEMO_CANDIDATE_ID}
+              jobId={job.id}
+              alreadyApplied={decision === "right"}
+              passed={decision === "left"}
+            />
+          </div>
+          <SaveJobButton
+            candidateId={DEMO_CANDIDATE_ID}
+            jobId={job.id}
+            initialSaved={savedIds.has(job.id)}
+          />
+        </div>
+      </div>
+
+      {/* Clears the fixed bar so the last section is not trapped under it. */}
+      <div aria-hidden className="h-20 sm:hidden" />
     </main>
   );
 }
